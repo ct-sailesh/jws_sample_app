@@ -59,8 +59,30 @@ design tokens.
 
 ## Getting started
 
+The `android/` and `ios/` native platform folders are **not checked in** —
+they're fully regenerable build scaffolding, deliberately removed rather
+than carried around as dead weight. Regenerate them, then reapply the two
+small manual native edits this project needs on top of the stock template
+(both already implemented once — this is just re-doing them after a fresh
+platform-folder generation):
+
 ```bash
 npm install
+
+# 1. Regenerate android/ + ios/ (matching this project's RN version):
+npx @react-native-community/cli@20.2.0 init tmp_platforms --directory ../tmp_platforms --pm npm --version 0.87.0
+mv ../tmp_platforms/android ../tmp_platforms/ios .
+rm -rf ../tmp_platforms
+
+# 2. Re-link the bundled fonts (see "Fonts" below):
+npx react-native-asset
+
+# 3. Reapply the camera/motion permission strings (see "Camera & motion
+#    permissions" below) — android/app/src/main/AndroidManifest.xml and
+#    ios/mobile_app_native/Info.plist — and the app display name in
+#    android/app/src/main/res/values/strings.xml / the iOS Info.plist
+#    (both should read "JSW Used Cars", matching app.json's displayName).
+
 npx react-native run-android   # or run-ios, from a Mac with Xcode
 ```
 
@@ -75,13 +97,14 @@ navigable without one).
 Everything under `src/` that isn't listed below is an unmodified copy.
 
 - **`src/features/capture/hooks/useDeviceAlignment.ts`** — `expo-sensors`
-  `DeviceMotion` → `react-native-sensors`' `accelerometer` observable. Same
-  60ms sample interval, same 0.18 EMA smoothing factor, same 35°/30° pitch/
-  roll tolerance bands, same 0.72 confidence threshold + 600ms stability
-  window for `aligned`. The pure pitch/roll/confidence/status-transition
-  math is now factored out as exported, independently unit-tested functions
+  `DeviceMotion` → `react-native-nitro-sensors`' `Sensors.createDeviceMotion()`.
+  Same 60ms sample interval, same 0.18 EMA smoothing factor, same 35°/30°
+  pitch/roll tolerance bands, same 0.72 confidence threshold + 600ms
+  stability window for `aligned`. The pure pitch/roll/confidence/status-
+  transition math is now factored out as exported functions
   (`computeTilt`, `computeConfidence`, `nextAlignmentStatus`) — a genuine
-  improvement over the original's inline-only version, not just a port.
+  improvement over the original's inline-only version, not just a port
+  (was unit-tested during development; see "Testing" below).
 - **`src/features/capture/CameraCaptureScreen.tsx`** — `expo-camera`'s
   `CameraView`/`useCameraPermissions` → `react-native-vision-camera`'s
   `Camera`/`useCameraPermission`/`useCameraDevice`; `expo-haptics` →
@@ -206,13 +229,76 @@ or in CI, isn't affected by this at all.
 
 ## Testing
 
+`__tests__/` and `__mocks__/` were removed for now (temporarily — not a
+statement that this app doesn't need tests). Jest is still wired up
+(`jest.config.js`, the `test` script, all the dev dependencies), so adding
+them back is just adding files again, not reconfiguring anything. Worth
+re-adding at minimum: `formatRupees`/`formatLakhs` (`src/utils/currency.ts`),
+`conditionTone`/`confidenceFromScore`/`bandMarkerPercent`
+(`src/utils/valuation.ts`), and the device-alignment pitch/roll/confidence/
+status-transition math (the exported `computeTilt`/`computeConfidence`/
+`nextAlignmentStatus` functions in
+`src/features/capture/hooks/useDeviceAlignment.ts` — mocking
+`react-native-nitro-sensors` itself is only needed because importing that
+file at all pulls the native import in; a manual Jest mock the same shape
+as `react-native-sensors/mock.js` worked fine here before).
+
 ```bash
-npm test        # jest — currency/valuation formulas + the device-alignment
-                 # pitch/roll/confidence/status-transition math
 npx tsc --noEmit
-npx eslint src App.tsx index.js --ext .ts,.tsx,.js
+npm run lint      # eslint . — flat config, see "Tooling versions" below
 ```
 
-`react-native-sensors` ships its own Jest mock (`jest.config.js` maps to it
-via `moduleNameMapper` — real accelerometer access needs a native binding
-Jest's Node environment doesn't have).
+## Tooling versions
+
+Every dependency in `package.json` was audited against its actual npm
+`latest` tag and cross-checked against what the *official React Native
+0.87.0 tooling itself* (`@react-native/eslint-config`,
+`@react-native/jest-preset`, `@react-native/babel-preset`) actually
+declares as supported — "latest" only where that's also genuinely
+supported, not the newest tag regardless of fit:
+
+- **ESLint 9** (`^9.39.5`), not 10 — `@react-native/eslint-config@0.87.0`'s
+  own `peerDependencies` cap at `^9.0.0`; ESLint 10 isn't acknowledged by
+  it yet. Migrating off the legacy `.eslintrc.js` to ESLint 9's flat config
+  was necessary either way (ESLint 9 requires it by default) — see
+  `eslint.config.js`, which just re-exports the official
+  `@react-native/eslint-config/flat`.
+  - That migration surfaced a real bug: `eslint-plugin-ft-flow@2.0.3`
+    (pulled in transitively by `@react-native/eslint-config`) calls an
+    ESLint API flat config removed (`context.getAllComments`), crashing on
+    every plain `.js` file. Fixed with an `overrides` entry in
+    `package.json` pinning `eslint-plugin-ft-flow` to `^3.0.11`, the first
+    version whose own `peerDependencies` actually claims ESLint 9 support.
+    Safe to remove once `@react-native/eslint-config` bumps its own
+    dependency past that version.
+- **TypeScript stays on `^6.0.3`**, not the newly-shipped TypeScript 7
+  (a ground-up native/Go-based compiler rewrite) — RN 0.87.0's own CLI
+  template scaffolds `^6.0.3`, i.e. the React Native team hasn't moved
+  their own tooling to 7.x yet either.
+- **Jest stays on `^29.7.0`**, not 30 — `@react-native/jest-preset@0.87.0`
+  depends on `babel-jest@^29.7.0` and `jest-environment-node@^29.7.0`
+  internally; `29.7.0` is the newest version that's exactly what those
+  already expect, avoiding a mixed-major Jest install.
+- **`react-test-renderer` and `@types/react-test-renderer` were removed**
+  — they were only ever used by the default template's `App.test.tsx`,
+  which was deleted along with the rest of `__tests__/` (see "Testing").
+  React's own docs steer new RN component tests toward
+  `@testing-library/react-native` instead; reconsider that (rather than
+  reintroducing `react-test-renderer`) whenever tests come back.
+- Everything else — `react`/`react-native`/`@react-navigation/*`/
+  `react-native-screens`/`react-native-gesture-handler`/
+  `react-native-safe-area-context`/`react-native-svg`/
+  `@react-native-async-storage/async-storage`/
+  `react-native-haptic-feedback`/`react-native-nitro-modules` — was
+  already at, or bumped to, its true npm `latest`.
+- `react-native-vision-camera` deliberately **stays on 4.7.3**, not 5.x —
+  see "Stack" above; re-confirmed as a deliberate exception, not an
+  oversight, when this tooling audit was done.
+- Two dependencies genuinely are `node_modules/**`-only build tooling
+  required for native linking despite having zero direct imports in
+  `src/`: `react-native-screens` (a hard peer of
+  `@react-navigation/native-stack`/`bottom-tabs`) and
+  `react-native-nitro-modules` (the native runtime `react-native-nitro-sensors`
+  links against). Both are correctly listed as top-level dependencies —
+  RN's autolinking needs a package physically present at the top level to
+  find it, not just resolvable transitively.

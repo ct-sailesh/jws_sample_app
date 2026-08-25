@@ -1,0 +1,84 @@
+PROMPT:
+
+Build a mobile app for JSW Used Cars — a guided car-valuation and
+self-inspection experience. Use React Native with the community CLI
+(TypeScript, no extra framework on top), and pick current, actively
+maintained, properly licensed libraries with good long-term support —
+optimize for a small, dependency-light, idiomatic codebase rather than a
+kitchen-sink stack.
+
+The app needs two halves:
+
+1. A "relationship" shell — a bottom-tab home experience (Home / My
+   Garage / Account) a returning owner lands on.
+2. A linear "journey" flow, pushed on top of that shell, that walks a
+   user through valuing their car: enter vehicle details, see an instant
+   indicative estimate, read the inspection instructions, go through a
+   guided 15-photo walk-around of the car using the camera, get an
+   AI-style condition analysis, see a health report with per-photo
+   findings, see a price breakdown, see the final valuation against the
+   indicative range, and pick a dealer.
+
+The camera step is the interesting part: full-screen live preview, a
+corner-bracket viewfinder, an on-screen skeleton/outline of the exact
+shot needed (front, 3/4 angles, sides, dashboard, odometer, seats, boot,
+engine bay, tyre close-up), and — using the phone's motion sensors — a
+live "how well-aligned is your phone" confidence signal that changes the
+skeleton's colour and, once held steady for a moment, automatically fires
+the shutter. Manual tap should always work too, regardless of that
+signal. Include a review grid afterward with per-photo retake/delete.
+
+Theming should be data-driven (light/dark, switchable, persisted), and
+screen copy/lists/button actions should come from small per-screen
+content files rather than being hardcoded in JSX, so editing a screen's
+text doesn't mean touching its component. No real backend yet — wire the
+seams so mock data flows through cleanly today and a real inspection API
+can be dropped in later without UI changes.
+
+SUMMARY OF WHAT WAS BUILT:
+
+- `mobile-app-native/` — a bare React Native CLI project (React Native
+  0.87, React 19, TypeScript strict). No Expo, no extra bundler, no state
+  library beyond React Context.
+- Navigation: React Navigation 7 — a bottom-tab shell (`MainTabs`) as the
+  base of a native-stack (`RootNavigator`), with the valuation journey's
+  screens pushed on top of it.
+- Theming: a small token set (spacing/radii/typography) shared across a
+  light and dark palette, plus a separate fixed dark palette reserved for
+  the camera screen (contrast against a live camera feed can't depend on
+  the user's chosen theme). Persisted via
+  `@react-native-async-storage/async-storage`, switchable from Account.
+- Content-driven screens: one file per screen under
+  `src/config/content/screens/*.ts` holding its copy/lists/actions; a
+  closed `ConfigAction` union (`navigate` / `goBack` / `openUrl` / `call`
+  / `noop` / `custom`) plus a resolver hook is the only way a
+  content-driven row or button can trigger behavior.
+- Shared UI primitives (`Button`, `Card`, `Chip`, `Input`, `ListRow`,
+  `Screen`, `ScreenHeader`, `ProgressSteps`, hand-drawn SVG icons and
+  illustrations) — no icon font, no UI kit dependency.
+- The guided-capture module: a full-screen `react-native-vision-camera`
+  preview, an SVG pose-overlay skeleton per shot, and a device-alignment
+  hook built on `react-native-nitro-sensors`'s device-motion feed —
+  turning raw accelerometer data into a smoothed pitch/roll reading,
+  comparing it against each shot's expected phone tilt, and driving an
+  idle/aligning/aligned confidence state that colors the skeleton and
+  fills an auto-capture ring once held steady for ~600ms. The physical
+  shutter button always fires regardless of that state. A capture-session
+  hook drives the 15-shot walk-around script (8 exterior angles plus
+  dashboard, odometer, front/rear seats, boot, engine bay, tyre
+  close-up), autosaves progress per registration number, and a review
+  screen groups shots by category with per-shot retake/delete and a
+  quality-check summary.
+- Haptic shutter feedback via `react-native-haptic-feedback`; Inter and
+  IBM Plex Mono bundled as native font assets rather than fetched at
+  runtime.
+- Mock data (`src/mocks/data.ts`) for vehicles, findings, valuation
+  figures, and dealers, clearly marked illustrative. An inspection-result
+  context and a photo-precheck hook are wired with a real "no backend
+  configured -> use mock data, never crash" fallback path, and a resize/
+  upload seam left as an explicit stub for whenever a real inspection API
+  is introduced.
+- `README.md` documents the stack choices and reasoning; `AGENTS.md` plus
+  `diary.md` / `todolist.md` / `techdebt.md` / this `prompts/` folder
+  record ongoing decisions and open follow-ups for future work on the
+  project.

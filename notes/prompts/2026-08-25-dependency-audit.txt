@@ -1,0 +1,53 @@
+PROMPT:
+now check all app packages for react native and cross check all
+libraries must be official, long term supported only and also latest
+then update run install
+
+[mid-task follow-up:]
+remove ununsed /unneccesary packages
+
+SUMMARY OF CHANGES:
+- Audited every dependency and devDependency in `package.json` against its
+  real npm `latest` tag, cross-checked against what the official React
+  Native 0.87.0 tooling (`@react-native/eslint-config`,
+  `@react-native/jest-preset`, `@react-native/babel-preset`, and RN's own
+  CLI template default for `typescript`) actually declares as supported —
+  treating "latest" as "latest genuinely supported," not the newest tag
+  regardless of fit. Full reasoning per package is in `../README.md`'s new
+  "Tooling versions" section.
+- Asked the user directly about the one real trade-off case
+  (`react-native-vision-camera` 4.7.3 vs. the npm-latest 5.2.3, which
+  requires adding `react-native-nitro-image`) — user chose to keep 4.7.3.
+- Bumped: `react` (+ its exactly-matching `react-test-renderer` version
+  requirement), `@types/react`, `@types/jest`, `@babel/core`,
+  `@babel/preset-env`, `@babel/runtime`, `react-native-safe-area-context`,
+  `prettier`.
+- Migrated ESLint 8 -> 9 (deleted `.eslintrc.js`, added `eslint.config.js`
+  re-exporting the official `@react-native/eslint-config/flat`) — ESLint
+  10 was available but not yet acknowledged by that config package's own
+  peer range. The flat-config migration surfaced a real bug
+  (`eslint-plugin-ft-flow@2.0.3` calling a removed ESLint API on every
+  plain `.js` file); fixed with an `overrides` entry pinning it to
+  `^3.0.11`.
+- Deliberately did NOT bump `typescript` (staying `^6.0.3`, not the very
+  new TypeScript 7 native compiler) or `jest`/`@types/jest` past 29.x
+  (`@react-native/jest-preset` depends on `babel-jest@^29.7.0` /
+  `jest-environment-node@^29.7.0` internally) — both because RN's own
+  official tooling hasn't moved there yet either.
+- Removed `react-test-renderer` and `@types/react-test-renderer` — the
+  only file that ever imported them (`__tests__/App.test.tsx`) was already
+  deleted in an earlier prompt.
+- Confirmed `react-native-screens` and `react-native-nitro-modules` are
+  NOT unused despite having zero direct imports anywhere in `src/` — both
+  are required native-linking peers (of React Navigation and
+  `react-native-nitro-sensors` respectively) that must stay as explicit
+  top-level dependencies for RN's autolinking to find them.
+- `npm install` run; verified `npx tsc --noEmit` and `npm run lint`
+  (now `eslint .` under flat config) both clean, and that `npm audit`
+  didn't gain any new findings (same pre-existing Metro/image-size
+  dev-tooling advisories as before).
+- Updated `../README.md` ("Tooling versions"), `../AGENTS.md` (a new
+  "latest means latest supported" coding-style rule), `diary.md`,
+  `techdebt.md`, and `todolist.md` to record the decisions and the
+  follow-ups they create (re-check ESLint 10 / the ft-flow override /
+  TypeScript 7 once RN's own tooling moves).
